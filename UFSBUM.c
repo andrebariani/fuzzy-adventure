@@ -206,6 +206,8 @@ int main(){
 	return 0;
 }
 
+int comp_ip(const void* a, const void* b) { return strcmp(*(char*) a, *(char*) b); }
+
 /* Cria índice primário */
 void criar_iprimary(Ip *indice_primario, int* nregistros) {
 	if(indice_primario == NULL)
@@ -217,6 +219,8 @@ void criar_iprimary(Ip *indice_primario, int* nregistros) {
 		strcpy(indice_primario[i].pk, j.pk);
 		indice_primario[i].rrn = i;
 	}
+
+	qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
 
 	return;
 }
