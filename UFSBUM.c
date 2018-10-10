@@ -117,8 +117,18 @@ Produto recuperar_registro(int rrn);
 /* (Re)faz o índice respectivo */
 void criar_iprimary(Ip *indice_primario, int* nregistros);
 
+/* Funcao comparativa para ordenacao dos indices primarios */
+// int comp_ip(const void* a, const void* b);
+
 /* Realiza os scanfs na struct Produto */
 void ler_entrada(char* registro, Produto *novo);
+
+/* Insere produto novo no arquivo de dados */
+void inserir_arquivo(Produto *novo);
+
+/* Insere novo indice primario e reordena
+ 	Retorna 1 com inserção bem sucedida, 0 se chave repetida*/
+int inserir_iprimary(Ip *indice_primario, int *nregistros, Produto *j);
 
 /* Rotina para impressao de indice secundario */
 void imprimirSecundario(Is* iproduct, Is* ibrand, Ir* icategory, Isf *iprice, int nregistros, int ncat);
@@ -148,11 +158,16 @@ int main(){
 	int opcao = 0;
 	while(1)
 	{
+		Produto produto_aux;
+		char registro[TAM_NOME];
+
 		scanf("%d%*c", &opcao);
 		switch(opcao)
 		{
 			case 1:
-				/*cadastro*/
+				ler_entrada(registro, &produto_aux);
+				if(inserir_iprimary(iprimary, &nregistros, &produto_aux)) inserir_arquivo(&produto_aux);
+				else printf(ERRO_PK_REPETIDA, produto_aux.pk);
 			break;
 			case 2:
 				/*alterar desconto*/
@@ -206,25 +221,6 @@ int main(){
 	return 0;
 }
 
-int comp_ip(const void* a, const void* b) { return strcmp(*(char*) a, *(char*) b); }
-
-/* Cria índice primário */
-void criar_iprimary(Ip *indice_primario, int* nregistros) {
-	if(indice_primario == NULL)
-		return;
-
-	for (int i = 0; i < *nregistros; i++) {
-		Produto j = recuperar_registro(i);
-
-		strcpy(indice_primario[i].pk, j.pk);
-		indice_primario[i].rrn = i;
-	}
-
-	qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
-
-	return;
-}
-
 /* Gera campo Código do produto de entrada */
 void gerarChave(Produto *p) {
 	p->pk[0] = toupper(p->nome[0]);
@@ -239,6 +235,109 @@ void gerarChave(Produto *p) {
 	p->pk[9] = p->ano[1];
 	p->pk[10] = '\0';
 }
+
+// int comp_ip(const void* a, const void* b) { return strcmp(*(char*) a, *(char*) b); }
+
+/* Cria índice primário */
+void criar_iprimary(Ip *indice_primario, int* nregistros) {
+	if(*nregistros == 0)
+		return;
+
+	for (int i = 0; i < *nregistros; i++) {
+		Produto j = recuperar_registro(i);
+
+		strcpy(indice_primario[i].pk, j.pk);
+		indice_primario[i].rrn = i;
+	}
+
+	// qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
+
+	return;
+}
+
+int inserir_iprimary(Ip *indice_primario, int* nregistros, Produto *j) {
+	if(*nregistros == MAX_REGISTROS)
+		return 0;
+
+	/* Busca linear por chave repetida */
+	for(int i = 0 ; i < *nregistros ; i++) {
+		if(strcmp(indice_primario[i].pk, j->pk))
+			return 0;
+	}
+
+	strcpy(indice_primario[*nregistros].pk, j->pk);
+	indice_primario[*nregistros].rrn = *nregistros;
+
+	*nregistros++;
+	// qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
+
+	return 1;
+}
+
+void ler_entrada(char* registro, Produto *novo) {
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->nome, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->marca, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->data, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->ano, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->preco, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->desconto, registro);
+	// getchar();
+
+	scanf("%[^\n]%*c", registro);
+	strcpy(novo->categoria, registro);
+	// getchar();
+
+	gerarChave(novo);
+}
+
+void inserir_arquivo(Produto *p) {
+
+	int ori = strlen(ARQUIVO) + 192;
+
+	strcat(ARQUIVO, p->nome);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->marca);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->data);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->ano);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->preco);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->desconto);
+	strcat(ARQUIVO, "@");
+
+	strcat(ARQUIVO, p->categoria);
+	strcat(ARQUIVO, "@");
+
+	int novo =  ori - strlen(ARQUIVO);
+	for( int i = 0 ; i < novo ; i++ ) {
+		strcat(ARQUIVO, "#");
+	}
+
+}
+
 
 /* Exibe o Produto */
 int exibir_registro(int rrn, char com_desconto)
