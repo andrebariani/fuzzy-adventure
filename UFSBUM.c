@@ -120,6 +120,14 @@ void criar_iprimary(Ip *indice_primario, int* nregistros);
 /* Funcao comparativa para ordenacao dos indices primarios */
 // int comp_ip(const void* a, const void* b);
 
+void criar_isecondary(Ip *indice_primario, Is* istuff, int* nregistros, int type);
+
+void criar_isf(Ip *indice_primario, Isf* iprice, int* nregistros);
+
+void criar_ireverse(Ip *indice_primario, Ir* icategory, int* nregistros, int* ncat);
+
+void inserir_lista(ll *lista_ligada char* pk);
+
 /* Realiza os scanfs na struct Produto */
 void ler_entrada(char* registro, Produto *novo);
 
@@ -128,7 +136,8 @@ void inserir_arquivo(Produto *novo);
 
 /* Insere novo indice primario e reordena
  	Retorna 1 com inserção bem sucedida, 0 se chave repetida*/
-int inserir_iprimary(Ip *indice_primario, int *nregistros, Produto *j);
+int atualizar_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Ir* icategory, Isf *iprice, int *nregistros, int* ncat, Produto *j);
+// int inserir_iprimary(Ip *indice_primario, int *nregistros, Produto *j);
 
 /* Rotina para impressao de indice secundario */
 void imprimirSecundario(Is* iproduct, Is* ibrand, Ir* icategory, Isf *iprice, int nregistros, int ncat);
@@ -154,6 +163,34 @@ int main(){
 
 	/*Alocar e criar índices secundários*/
 
+	Is *iproduct = (Is *) malloc (MAX_REGISTROS * sizeof(Is));
+  	if (!iproduct) {
+		perror(MEMORIA_INSUFICIENTE);
+		exit(1);
+	}
+	criar_isecondary(iprimary, iproduct, &nregistros, 0);
+
+	Is *ibrand = (Is *) malloc (MAX_REGISTROS * sizeof(Is));
+  	if (!ibrand) {
+		perror(MEMORIA_INSUFICIENTE);
+		exit(1);
+	}
+	criar_isecondary(iprimary, ibrand, &nregistros, 1);
+
+	Isf *iprice = (Isf *) malloc (MAX_REGISTROS * sizeof(Isf));
+	if (!iprice) {
+		perror(MEMORIA_INSUFICIENTE);
+		exit(1);
+	}
+	criar_isf(iprimary, iprice, &nregistros);
+
+	Ir *icategory = (Ir *) malloc (MAX_REGISTROS * sizeof(Ir));
+  	if (!icategory) {
+		perror(MEMORIA_INSUFICIENTE);
+		exit(1);
+	}
+	criar_ireverse(iprimary, icategory, &nregistros, &ncat);
+
 	/* Execução do programa */
 	int opcao = 0;
 	while(1)
@@ -165,9 +202,12 @@ int main(){
 		switch(opcao)
 		{
 			case 1:
+				// printf("OH GOD WHY\n");
 				ler_entrada(registro, &produto_aux);
-				if(inserir_iprimary(iprimary, &nregistros, &produto_aux)) inserir_arquivo(&produto_aux);
-				else printf(ERRO_PK_REPETIDA, produto_aux.pk);
+				if(atualizar_indices(iprimary, iproduct, ibrand, iprice, icategory &nregistros, &ncat, &produto_aux))
+					inserir_arquivo(&produto_aux);
+				else
+					printf(ERRO_PK_REPETIDA, produto_aux.pk);
 			break;
 			case 2:
 				/*alterar desconto*/
@@ -255,7 +295,98 @@ void criar_iprimary(Ip *indice_primario, int* nregistros) {
 	return;
 }
 
-int inserir_iprimary(Ip *indice_primario, int* nregistros, Produto *j) {
+void criar_isecondary(Ip *indice_primario, Is* istuff, int* nregistros, int type) {
+	if(*nregistros == 0)
+		return;
+
+	for (int i = 0; i < *nregistros; i++) {
+		Produto j = recuperar_registro(indice_primario[i].rrn);
+
+		strcpy(istuff[i].pk, j.pk);
+		type ? strcpy(istuff[i].string, j.marca) : strcpy(istuff[i].string, j.nome);
+	}
+
+	// qsort(istuff, *nregistros, sizeof(Ip), comp_ip);
+
+}
+
+void criar_isf(Ip *indice_primario, Isf* iprice, int* nregistros) {
+	if(*nregistros == 0)
+		return;
+
+	for (int i = 0; i < *nregistros; i++) {
+		Produto j = recuperar_registro(indice_primario[i].rrn);
+
+		strcpy(iprice[i].pk, j.pk);
+		iprice[i].price = atof(j.preco);
+	}
+
+	// qsort(iprice, *nregistros, sizeof(Ip), comp_ip);
+
+}
+
+void criar_ireverse(Ip *indice_primario, Ir* icategory, int* nregistros, int* ncat) {
+	if(*nregistros == 0)
+		return;
+
+	char *cat, categorias[TAM_CATEGORIA];
+
+	for (int i = 0; i < *nregistros; i++) {
+		Produto j = recuperar_registro(indice_primario[i].rrn);
+
+		strcpy(categorias, j.categoria);
+
+		cat = strtok (categorias, "|");
+
+		while(cat != NULL){
+			/* Se nao houver categorias na lista */
+			if(*ncat == 0) {
+				strcpy(icategory[0].cat, cat);
+
+				ll *lista = (ll *) malloc (sizeof(ll));
+				icategory[0].lista = lista;
+
+				strcpy(lista->pk, j.pk);
+
+				lista->prox = NULL;
+			}
+
+
+			for(int i = 0 ; i < *ncat ; i++) {
+				/* Se houver categoria repetida [Versao Linear] */
+				if(strcmp(cat, icategory[i].cat)) {
+					strcpy(icategory[i].cat, cat);
+
+					ll *lista = (ll *) malloc (sizeof(ll));
+					icategory[i].lista = lista;
+
+					strcpy(lista->pk, j.pk);
+
+					lista->prox = NULL;
+				}
+			}
+
+			/* Se for categoria nova */
+			int pos = *ncat;
+
+			strcpy(icategory[pos].cat, cat);
+
+			ll *lista = (ll *) malloc (sizeof(ll));
+			icategory[pos].lista = lista;
+
+			strcpy(lista->pk, j.pk);
+
+			lista->prox = NULL;
+
+			*ncat = *ncat + 1;
+			cat = strtok (NULL, "|");
+		}
+	}
+
+	// qsort(icategory, *ncat, sizeof(Ir), comp_ip);
+}
+
+int atualizar_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Ir* icategory, Isf *iprice, int *nregistros, int* ncat, Produto *j) {
 	if(*nregistros == MAX_REGISTROS)
 		return 0;
 
@@ -268,7 +399,64 @@ int inserir_iprimary(Ip *indice_primario, int* nregistros, Produto *j) {
 	strcpy(indice_primario[*nregistros].pk, j->pk);
 	indice_primario[*nregistros].rrn = *nregistros;
 
-	*nregistros++;
+	strcpy(iproduct[*nregistros].pk, j->pk);
+	strcpy(istuff[i].string, j.nome);
+
+	strcpy(ibrand[*nregistros].pk, j->pk);
+	strcpy(ibrand[i].string, j.marca);
+
+	strcpy(iprice[i].pk, j->pk);
+	iprice[i].price = atof(j.preco);
+
+	strcpy(categorias, j.categoria);
+
+	cat = strtok (categorias, "|");
+
+	while(cat != NULL){
+		/* Se nao houver categorias na lista */
+		if(*ncat == 0) {
+			strcpy(icategory[0].cat, cat);
+
+			ll *lista = (ll *) malloc (sizeof(ll));
+			icategory[0].lista = lista;
+
+			strcpy(lista->pk, j.pk);
+
+			lista->prox = NULL;
+		}
+
+
+		for(int i = 0 ; i < *ncat ; i++) {
+			/* Se houver categoria repetida [Versao Linear] */
+			if(strcmp(cat, icategory[i].cat)) {
+				strcpy(icategory[i].cat, cat);
+
+				ll *lista = (ll *) malloc (sizeof(ll));
+				icategory[i].lista = lista;
+
+				strcpy(lista->pk, j.pk);
+
+				lista->prox = NULL;
+			}
+		}
+
+		/* Se for categoria nova */
+		int pos = *ncat;
+
+		strcpy(icategory[pos].cat, cat);
+
+		ll *lista = (ll *) malloc (sizeof(ll));
+		icategory[pos].lista = lista;
+
+		strcpy(lista->pk, j.pk);
+
+		lista->prox = NULL;
+
+		*ncat = *ncat + 1;
+		cat = strtok (NULL, "|");
+	}
+
+	*nregistros = *nregistros + 1;
 	// qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
 
 	return 1;
@@ -309,6 +497,9 @@ void ler_entrada(char* registro, Produto *novo) {
 void inserir_arquivo(Produto *p) {
 
 	int ori = strlen(ARQUIVO) + 192;
+
+	if(ori == 192)
+		ARQUIVO[0] = '\0';
 
 	strcat(ARQUIVO, p->nome);
 	strcat(ARQUIVO, "@");
