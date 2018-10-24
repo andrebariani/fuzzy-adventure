@@ -107,6 +107,8 @@ char ARQUIVO[TAM_ARQUIVO];
  * de registros. */
 int carregar_arquivo();
 
+int atualizar_arquivo(int nreg);
+
 /* Exibe o Produto */
 int exibir_registro(int rrn, char com_desconto);
 
@@ -130,7 +132,7 @@ void criar_isf(Ip *indice_primario, Isf* iprice, int* nregistros);
 
 void criar_ireverse(Ip *indice_primario, Ir* icategory, int* nregistros, int* ncat);
 
-void inserir_lista(ll *lista_ligada, char* pk);
+void inserir_lista(ll **lista_ligada, char* pk);
 
 /* Realiza os scanfs na struct Produto */
 void ler_entrada(char* registro, Produto *novo);
@@ -142,10 +144,17 @@ void inserir_arquivo(Produto *novo);
  	Retorna 1 com inserção bem sucedida, 0 se chave repetida*/
 int adicionar_aos_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *iprice, Ir* icategory, int *nregistros, int* ncat, Produto *j);
 
-int alterar(char* pk, char* desconto, Ip *indice_primario, Isf *iprice, int *nregistros);
+int remover(Ip *indice_primario, char* pk, int *nregistros);
+
+int alterar(char* desconto, Ip *indice_alterar, Isf *iprice, int *nregistros);
+
+void liberar_espaco(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *iprice, Ir* icategory, int *ncat);
 
 /* Busca linearmente por um registro que pode ser repetido */
-int buscar_is(char* registro, Ip *indice_primario, Is* istuff, int *nregistros);
+int buscar_iproduct(char* registro, Ip *indice_primario, Is* istuff, int *nregistros);
+
+/* Busca linearmente por um registro que pode ser repetido */
+int buscar_ibrand(char* registro, char* categoria, Ip *indice_primario, Is* istuff, Ir* icategory, int *nregistros, int *ncat);
 
 /* Rotina para impressao de indice secundario */
 void imprimirSecundario(Is* iproduct, Is* ibrand, Ir* icategory, Isf *iprice, int nregistros, int ncat);
@@ -236,27 +245,39 @@ int main(){
 				/*alterar desconto*/
 				printf(INICIO_ALTERACAO);
 
-				char pk[TAM_PRIMARY_KEY];
+				char pk_alt[TAM_PRIMARY_KEY];
 				char desconto[TAM_DESCONTO];
 
-				scanf("%[^\n]%*c", pk);
-				scanf("%[^\n]%*c", desconto);
+				scanf("%[^\n]%*c", pk_alt);
 
-				if(alterar(pk, desconto, iprimary, iprice, &nregistros))
-					printf(SUCESSO);
-				else
+				Ip *found;
+				found = (Ip *) bsearch(pk_alt, iprimary, nregistros, sizeof(Ip), comp_ip);
+
+				if(found) {
+
+					scanf("%[^\n]%*c", desconto);
+
+					if(alterar(desconto, found, iprice, &nregistros))
+						printf(SUCESSO);
+					else
+						printf(FALHA);
+				} else {
+					printf(REGISTRO_N_ENCONTRADO);
 					printf(FALHA);
-
+				}
 			break;
 			case 3:
 				/*excluir produto*/
 				printf(INICIO_EXCLUSAO);
-				/*
-				if(remover([args]))
+
+				char pk_rem[TAM_PRIMARY_KEY];
+
+				scanf("%[^\n]%*c", pk_rem);
+
+				if(remover(iprimary, pk_rem, &nregistros))
 					printf(SUCESSO);
 				else
 					printf(FALHA);
-				*/
 			break;
 			case 4:
 				/*busca*/
@@ -274,7 +295,10 @@ int main(){
 							found = (Ip *) bsearch(registro, iprimary, nregistros, sizeof(Ip), comp_ip);
 
 							if(found) {
-								exibir_registro(found->rrn, 0);
+								if(found->rrn != -1)
+									exibir_registro(found->rrn, 0);
+								else
+									printf(REGISTRO_N_ENCONTRADO);
 							} else {
 								printf(REGISTRO_N_ENCONTRADO);
 							}
@@ -287,7 +311,7 @@ int main(){
 						if(nregistros) {
 							scanf("%[^\n]%*c", registro);
 
-							if(!buscar_is(registro, iprimary, iproduct, &nregistros))
+							if(!buscar_iproduct(registro, iprimary, iproduct, &nregistros))
 								printf(REGISTRO_N_ENCONTRADO);
 
 						} else {
@@ -295,7 +319,18 @@ int main(){
 						}
 					break;
 					case 3:
-						printf("IN DEVELOPMENT\n");
+						if(nregistros) {
+							char categoria[TAM_CATEGORIA];
+
+							scanf("%[^\n]%*c", registro);
+							scanf("%[^\n]%*c", categoria);
+
+							if(!buscar_ibrand(registro, categoria, iprimary, ibrand, icategory, &nregistros, &ncat))
+								printf(REGISTRO_N_ENCONTRADO);
+
+						} else {
+							printf(ARQUIVO_VAZIO);
+						}
 					break;
 				}
 
@@ -315,8 +350,13 @@ int main(){
 								if(next) {
 									printf("\n");
 								}
-								next = 1;
-								exibir_registro(iprimary[i].rrn, 0);
+
+								if(iprimary[i].rrn != -1) {
+									exibir_registro(iprimary[i].rrn, 0);
+									next = 1;
+								} else {
+									next = 0;
+								}
 							}
 						} else {
 							printf(REGISTRO_N_ENCONTRADO);
@@ -324,23 +364,61 @@ int main(){
 					break;
 					/* Categoria */
 					case 2:
-						printf("IN DEVELOPMENT\n");
+						if(nregistros) {
+							scanf("%[^\n]%*c", registro);
+
+							Ir *found;
+							found = (Ir *) bsearch(registro, icategory, nregistros, sizeof(Ir), comp_ir);
+
+							if(found) {
+								ll *aux = found->lista;
+
+								int next = 0;
+								while(aux != NULL) {
+									if(next) {
+										printf("\n");
+									}
+
+									Ip *found2;
+									found2 = (Ip *) bsearch(aux->pk, iprimary, nregistros, sizeof(Ip), comp_ip);
+
+									if(found2->rrn != -1) {
+										exibir_registro(found2->rrn, 0);
+										next = 1;
+									} else {
+										next = 0;
+									}
+									aux = aux->prox;
+								}
+							} else {
+								printf(REGISTRO_N_ENCONTRADO);
+							}
+
+						} else {
+							printf(ARQUIVO_VAZIO);
+						}
 					break;
 					case 3:
 					/* Marca */
 						if(nregistros) {
 							int next = 0;
+							qsort(ibrand, nregistros, sizeof(Is), comp_is_by_str);
 							for( int i = 0 ; i < nregistros ; i++) {
 								if(next) {
 									printf("\n");
 								}
-								next = 1;
 
 								Ip *found;
 								found = (Ip *) bsearch(ibrand[i].pk, iprimary, nregistros, sizeof(Ip), comp_ip);
 
-								exibir_registro(found->rrn, 0);
+								if(found->rrn != -1) {
+									exibir_registro(found->rrn, 0);
+									next = 1;
+								} else {
+									next = 0;
+								}
 							}
+							qsort(ibrand, nregistros, sizeof(Is), comp_is_by_pk);
 						} else {
 							printf(REGISTRO_N_ENCONTRADO);
 						}
@@ -353,12 +431,16 @@ int main(){
 								if(next) {
 									printf("\n");
 								}
-								next = 1;
 
 								Ip *found;
 								found = (Ip *) bsearch(iprice[i].pk, iprimary, nregistros, sizeof(Ip), comp_ip);
 
-								exibir_registro(found->rrn, 1);
+								if(found->rrn != -1) {
+									exibir_registro(found->rrn, 1);
+									next = 1;
+								} else {
+									next = 0;
+								}
 							}
 						} else {
 							printf(REGISTRO_N_ENCONTRADO);
@@ -369,6 +451,59 @@ int main(){
 			break;
 			case 6:
 				/*libera espaço*/
+				free(iprimary);
+				free(iproduct);
+				free(ibrand);
+				free(iprice);
+				// for(int i = 0 ; i < ncat ; i++)
+				// 	free(icategory[i].lista);
+				free(icategory);
+				ncat = 0;
+
+				atualizar_arquivo(nregistros);
+
+				/* Índice primário */
+				Ip *iprimary = (Ip *) malloc (MAX_REGISTROS * sizeof(Ip));
+			  	if (!iprimary) {
+					perror(MEMORIA_INSUFICIENTE);
+					exit(1);
+				}
+				criar_iprimary(iprimary, &nregistros);
+
+				/*Alocar e criar índices secundários*/
+
+				// iproduct
+				Is *iproduct = (Is *) malloc (MAX_REGISTROS * sizeof(Is));
+			  	if (!iproduct) {
+					perror(MEMORIA_INSUFICIENTE);
+					exit(1);
+				}
+				criar_isecondary(iprimary, iproduct, &nregistros, 0);
+
+				// ibrand
+				Is *ibrand = (Is *) malloc (MAX_REGISTROS * sizeof(Is));
+			  	if (!ibrand) {
+					perror(MEMORIA_INSUFICIENTE);
+					exit(1);
+				}
+				criar_isecondary(iprimary, ibrand, &nregistros, 1);
+
+				// iprice
+				Isf *iprice = (Isf *) malloc (MAX_REGISTROS * sizeof(Isf));
+				if (!iprice) {
+					perror(MEMORIA_INSUFICIENTE);
+					exit(1);
+				}
+				criar_isf(iprimary, iprice, &nregistros);
+
+				// icategory
+				Ir *icategory = (Ir *) malloc (MAX_REGISTROS * sizeof(Ir));
+			  	if (!icategory) {
+					perror(MEMORIA_INSUFICIENTE);
+					exit(1);
+				}
+				criar_ireverse(iprimary, icategory, &nregistros, &ncat);
+
 			break;
 			case 7:
 				/*imprime o arquivo de dados*/
@@ -381,6 +516,16 @@ int main(){
 			break;
 			case 9:
 	      		/*Liberar memória e finalizar o programa */
+
+				// free((Ip *)iprimary);
+				// free(iproduct);
+				// free(ibrand);
+				// free(iprice);
+				// for(int i = 0 ; i < ncat ; i++)
+				// 	free(icategory[i].lista);
+				// free(icategory);
+				// ncat = 0;
+
 				return 0;
 			break;
 			default:
@@ -465,7 +610,7 @@ void criar_isecondary(Ip *indice_primario, Is* istuff, int* nregistros, int type
 		type ? strcpy(istuff[i].string, j.marca) : strcpy(istuff[i].string, j.nome);
 	}
 
-	qsort(istuff, *nregistros, sizeof(Is), comp_is_by_str);
+	qsort(istuff, *nregistros, sizeof(Is), comp_is_by_pk);
 
 }
 
@@ -490,23 +635,43 @@ void criar_isf(Ip *indice_primario, Isf* iprice, int* nregistros) {
 	qsort(iprice, *nregistros, sizeof(Isf), comp_isf);
 }
 
-void inserir_lista(ll *lista_ligada, char* pk) {
-	if(lista_ligada == NULL) {
+void inserir_lista(ll **lista_ligada, char* pk) {
+	if(*lista_ligada == NULL) {
 		ll *novo = (ll *) malloc (sizeof(ll));
-		lista_ligada = novo;
+		*lista_ligada = novo;
 		strcpy(novo->pk, pk);
 		novo->prox = NULL;
-		// printf("Empty List: \tInserting %s in LL\n", novo->pk);
 	} else {
-		while(lista_ligada->prox != NULL)
-			lista_ligada = lista_ligada->prox;
+		ll *aux = *lista_ligada;
 
-		ll *novo = (ll *) malloc (sizeof(ll));
+		while(aux != NULL) {
+			// Se primeiro elemento
+			if(strcmp(pk, aux->pk) < 0) {
+				if(strcmp(aux->pk, (*lista_ligada)->pk) == 0) {
+					ll *novo = (ll *) malloc (sizeof(ll));
+					(*lista_ligada) = novo;
+					strcpy(novo->pk, pk);
+					novo->prox = aux;
+					return;
+				}
+			// Se ultimo elemento
+			} else if(aux->prox == NULL) {
+				ll *novo = (ll *) malloc (sizeof(ll));
+				strcpy(novo->pk, pk);
+				aux->prox = novo;
+				novo->prox = NULL;
+				return;
+			// Se estiver no meio
+			} else if(strcmp(pk, aux->prox->pk) < 0) {
+				ll *novo = (ll *) malloc (sizeof(ll));
+				strcpy(novo->pk, pk);
+				novo->prox = aux->prox;
+				aux->prox = novo;
+				return;
+			}
 
-		lista_ligada->prox = novo;
-		strcpy(novo->pk, pk);
-		novo->prox = NULL;
-		// printf("Has an element: \tInserting %s in LL\n", novo->pk);
+			aux = aux->prox;
+		}
 	}
 }
 
@@ -531,7 +696,7 @@ void criar_ireverse(Ip *indice_primario, Ir* icategory, int* nregistros, int* nc
 					/* Se houver categoria repetida [Versao Linear] */
 					if(strcmp(cat, icategory[i].cat) == 0) {
 						// printf("Rep: In %s: ", icategory[i].cat);
-						inserir_lista(icategory[i].lista, j.pk);
+						inserir_lista(&icategory[i].lista, j.pk);
 						found = 1;
 						*ncat = *ncat - 1;
 					}
@@ -544,14 +709,14 @@ void criar_ireverse(Ip *indice_primario, Ir* icategory, int* nregistros, int* nc
 					strcpy(icategory[pos].cat, cat);
 
 					// printf("New Cat: In %s: ", icategory[pos].cat);
-					inserir_lista(icategory[pos].lista, j.pk);
+					inserir_lista(&icategory[pos].lista, j.pk);
 				}
 			} else {
 				/* Se nao houver categorias no vetor */
 				strcpy(icategory[0].cat, cat);
 				// printf("Empty Cat: In %s: ", icategory[0].cat);
 				icategory[0].lista = NULL;
-				inserir_lista(icategory[0].lista, j.pk);
+				inserir_lista(&icategory[0].lista, j.pk);
 			}
 
 			*ncat = *ncat + 1;
@@ -579,7 +744,7 @@ int adicionar_aos_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *ip
 
 	strcpy(iproduct[*nregistros].pk, j->pk);
 	strcpy(iproduct[*nregistros].string, j->nome);
-	qsort(iproduct, *nregistros  + 1, sizeof(Is), comp_is_by_str);
+	qsort(iproduct, *nregistros  + 1, sizeof(Is), comp_is_by_pk);
 
 	strcpy(ibrand[*nregistros].pk, j->pk);
 	strcpy(ibrand[*nregistros].string, j->marca);
@@ -596,6 +761,7 @@ int adicionar_aos_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *ip
 	char *cat, categorias[TAM_CATEGORIA];
 
 	strcpy(categorias, j->categoria);
+	qsort(icategory, *ncat, sizeof(Ir), comp_ir);
 
 	cat = strtok(categorias, "|");
 
@@ -607,7 +773,7 @@ int adicionar_aos_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *ip
 				/* Se houver categoria repetida [Versao Linear] */
 				if(strcmp(cat, icategory[i].cat) == 0) {
 					// printf("Rep: In %s: ", icategory[i].cat);
-					inserir_lista(icategory[i].lista, j->pk);
+					inserir_lista(&icategory[i].lista, j->pk);
 					found = 1;
 					*ncat = *ncat - 1;
 				}
@@ -620,22 +786,22 @@ int adicionar_aos_indices(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *ip
 				strcpy(icategory[pos].cat, cat);
 
 				// printf("New Cat: In %s: ", icategory[pos].cat);
-				inserir_lista(icategory[pos].lista, j->pk);
+				inserir_lista(&icategory[pos].lista, j->pk);
 			}
 		} else {
 			/* Se nao houver categorias no vetor */
 			strcpy(icategory[0].cat, cat);
 			// printf("Empty Cat: In %s: ", icategory[0].cat);
 			icategory[0].lista = NULL;
-			inserir_lista(icategory[0].lista, j->pk);
+			inserir_lista(&icategory[0].lista, j->pk);
 		}
 
 		*ncat = *ncat + 1;
 		cat = strtok(NULL, "|");
 	}
+	qsort(icategory, *ncat, sizeof(Ir), comp_ir);
 
 	*nregistros = *nregistros + 1;
-	// qsort(indice_primario, *nregistros, sizeof(Ip), comp_ip);
 
 	return 1;
 }
@@ -697,7 +863,7 @@ void inserir_arquivo(Produto *p) {
 	strcat(ARQUIVO, temp);
 }
 
-int buscar_is(char* registro, Ip* iprimary, Is* istuff, int *nregistros) {
+int buscar_iproduct(char* registro, Ip* iprimary, Is* istuff, int *nregistros) {
 	int found = 0;
 	/* [Versao Linear] e necessaria nesse caso devido a possibilidade de repeticao de registro (string) */
 	for(int i = 0 ; i < *nregistros ; i++) {
@@ -705,37 +871,83 @@ int buscar_is(char* registro, Ip* iprimary, Is* istuff, int *nregistros) {
 			if(found)
 				printf("\n");
 
-			found = 1;
 
 			Ip *pk; // hehe
 			pk = (Ip *) bsearch(istuff[i].pk, iprimary, *nregistros, sizeof(Ip), comp_ip);
 
 			exibir_registro(pk->rrn, 0);
+			found = 1;
 		}
 	}
 
 	return found;
 }
 
-int alterar(char* pk, char* desconto, Ip *indice_primario, Isf *iprice, int* nregistros) {
+int buscar_ibrand(char* registro, char* categoria, Ip *indice_primario, Is* istuff, Ir* icategory, int *nregistros, int *ncat) {
+	int found = 0;
+	/* [Versao Linear] e necessaria nesse caso devido a possibilidade de repeticao de registro (string) */
+	for(int i = 0 ; i < *nregistros ; i++) {
+		if(strcmp(istuff[i].string, registro) == 0) {
+			if(found)
+				printf("\n");
 
-	Ip *found;
-	found = (Ip *) bsearch(pk, indice_primario, *nregistros, sizeof(Ip), comp_ip);
+			Ir *cat;
+			cat = (Ir *) bsearch(categoria, icategory, *ncat, sizeof(Ir), comp_ir);
 
-	if(found != NULL) {
+			ll* aux = cat->lista;
+
+			while(aux != NULL) {
+				// ERRO AQUI
+				if(strcmp(istuff[i].pk, aux->pk) == 0) {
+					Ip *pk;
+					pk = (Ip *) bsearch(aux->pk, indice_primario, *nregistros, sizeof(Ip), comp_ip);
+
+					exibir_registro(pk->rrn, 0);
+					found = 1;
+					break;
+				}
+				aux = aux->prox;
+			}
+			return found;
+		}
+	}
+
+	return found;
+}
+
+
+int remover(Ip *indice_primario, char* pk, int *nregistros) {
+	if(nregistros) {
+		Ip *found;
+		found = (Ip *) bsearch(pk, indice_primario, *nregistros, sizeof(Ip), comp_ip);
+
+		if(found) {
+			ARQUIVO[found->rrn*192] = '*';
+			ARQUIVO[found->rrn*192 + 1] = '|';
+
+			found->rrn = -1;
+
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		return 0;
+	}
+}
+
+int alterar(char* desconto, Ip *indice_alterar, Isf *iprice, int* nregistros) {
+	if(indice_alterar->rrn != -1) {
 		/* Pre-processando a entrada */
 		if(strlen(desconto) == 3) {
 			int d = atoi(desconto);
 			if(d <= 100 && d >= 0) {
 				char temp[193];
-
-				strncpy(temp, ARQUIVO + ((found->rrn)*192), 192);
-
-				temp[192] = '\0';
+					strncpy(temp, ARQUIVO + ((indice_alterar->rrn)*192), 192);
+					temp[192] = '\0';
 				int size = strlen(temp);
 				int pos = 0;
-
-				// Procura posicao do campo desconto
+					// Procura posicao do campo desconto
 				int arroba = 0;
 				for(int i = 0 ; i < size ; i++) {
 					if(temp[i] == '@') {
@@ -746,32 +958,51 @@ int alterar(char* pk, char* desconto, Ip *indice_primario, Isf *iprice, int* nre
 						break;
 					}
 				}
-
-				/* Altera Arquivo de Dados */
-				ARQUIVO[((found->rrn)*192) + pos] = desconto[0];
-				ARQUIVO[((found->rrn)*192) + pos+1] = desconto[1];
-				ARQUIVO[((found->rrn)*192) + pos+2] = desconto[2];
-
-				/* Atualiza indice secundario de preco [Versao Linear] */
+					/* Altera Arquivo de Dados */
+				ARQUIVO[((indice_alterar->rrn)*192) + pos] = desconto[0];
+				ARQUIVO[((indice_alterar->rrn)*192) + pos+1] = desconto[1];
+				ARQUIVO[((indice_alterar->rrn)*192) + pos+2] = desconto[2];
+					/* Atualiza indice_alterar secundario de preco [Versao Linear] */
 				for(int i = 0 ; i < *nregistros ; i++) {
-					if(strcmp(iprice[i].pk, pk) == 0) {
+					if(strcmp(iprice[i].pk, indice_alterar->pk) == 0) {
 						float preco;
-						Produto j = recuperar_registro(found->rrn);
+						Produto j = recuperar_registro(indice_alterar->rrn);
 						preco = atof(j.preco);
 						preco = preco * (100 - d);
 						iprice[i].price = ((int) preco)/ (float) 100;
-
-						qsort(iprice, *nregistros, sizeof(Isf), comp_isf);
+							qsort(iprice, *nregistros, sizeof(Isf), comp_isf);
 						break;
 					}
 				}
-
 				return 1;
 			}
+		} else {
+			return 0;
 		}
 	}
 
 	return 0;
+}
+
+void liberar_espaco(Ip *indice_primario, Is* iproduct, Is* ibrand, Isf *iprice, Ir* icategory, int *ncat) {
+	return;
+}
+
+int atualizar_arquivo(int nreg) {
+
+	char temp[193];
+	int i = 0; // read position
+	int j = 0; // write position
+	for(i = 0 ; i < nreg ; i++) {
+		strncpy(temp, ARQUIVO + ((i)*TAM_REGISTRO), TAM_REGISTRO);
+
+		if(temp[0] != '*' && temp[1] != '|') {
+			strncpy(ARQUIVO + ((j)*TAM_REGISTRO), temp, TAM_REGISTRO);
+			j++;
+		}
+	}
+
+	return j;
 }
 
 int exibir_registro(int rrn, char com_desconto)
